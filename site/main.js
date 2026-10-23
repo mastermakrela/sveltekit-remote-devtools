@@ -10,10 +10,7 @@ for (const button of document.querySelectorAll('[data-copy]')) {
 
 // Videos play only while on screen; with reduced motion they wait for the viewer
 for (const video of document.querySelectorAll('video')) {
-	if (reduce) {
-		video.controls = true;
-		continue;
-	}
+	if (reduce) continue;
 	new IntersectionObserver(([entry]) => (entry.isIntersecting ? video.play().catch(() => {}) : video.pause()), {
 		threshold: 0.2
 	}).observe(video);
