@@ -15,7 +15,7 @@ for (const video of document.querySelectorAll('video')) {
 		continue;
 	}
 	new IntersectionObserver(([entry]) => (entry.isIntersecting ? video.play().catch(() => {}) : video.pause()), {
-		threshold: 0.35
+		threshold: 0.2
 	}).observe(video);
 }
 
