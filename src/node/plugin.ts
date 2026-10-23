@@ -358,6 +358,11 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 				// of its own render, which happened before its HMR client connected.
 				(globalThis as Record<symbol, unknown>)[emit_key] = (data: Record<string, unknown>) => {
 					const event = { ...data, serverSeq: ++event_seq };
+					// a live query reports every value it yields: keep only the latest one per stream
+					if (data.stream != null) {
+						const previous = events.findIndex((e) => e.stream === data.stream);
+						if (previous !== -1) events.splice(previous, 1);
+					}
 					events.push(event);
 					if (events.length > EVENT_BUFFER) events.splice(0, events.length - EVENT_BUFFER);
 					server.ws.send({ type: 'custom', event: WS_SERVER_EVENT, data: event });

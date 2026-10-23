@@ -13,8 +13,10 @@
 //    `collect_remote_data` drains `explicit` right after.
 //
 // Handler shapes are preserved: `form` handlers receive `(data, issue)`, `query.batch` receives `args[]`,
-// `query.live` returns an (async) iterable that must not be awaited. The wrapper forwards arguments and
-// returns the original value untouched.
+// `query.live` returns an (async) iterable that must not be awaited. Two results are wrapped rather than
+// passed through, because the value worth showing only exists later: the resolver a `query.batch` handler
+// returns (Kit calls it once per argument right after the handler settles), and the iterator a `query.live`
+// handler returns (each value it yields is reported, with a stream id so the devtool keeps only the latest).
 
 export const SCHEMA_SYMBOL = 'sveltekit-remote-devtools.validator';
 export const EMIT_SYMBOL = 'sveltekit-remote-devtools.emit';
@@ -23,6 +25,7 @@ export const EMIT_SYMBOL = 'sveltekit-remote-devtools.emit';
 export const shim_source = (devalue_path: string) => `
 import * as kit from '$app/server';
 import { get_request_store } from '@sveltejs/kit/internal/server';
+import { randomUUID } from 'node:crypto';
 import * as devalue from ${JSON.stringify(devalue_path)};
 export * from '$app/server';
 
@@ -68,6 +71,41 @@ function request_id_of(request) {
 	return id;
 }
 
+/** Kit's own iterable normalisation (runtime/app/server/remote/shared.js to_iterator) */
+function to_iterator(source) {
+	if (source && typeof source.next === 'function') return source;
+	if (source && typeof source[Symbol.asyncIterator] === 'function') return source[Symbol.asyncIterator]();
+	if (source && typeof source[Symbol.iterator] === 'function') return source[Symbol.iterator]();
+	return null;
+}
+
+/** Reports every value Kit pulls. A plain iterator, not an async generator: Kit calls next() inside its request store */
+function tap_iterator(iterator, on_value, on_error) {
+	return {
+		next(...a) {
+			return Promise.resolve(iterator.next(...a)).then(
+				(step) => {
+					if (!step.done) on_value(step.value);
+					return step;
+				},
+				(error) => {
+					on_error(error);
+					throw error;
+				}
+			);
+		},
+		return(value) {
+			return typeof iterator.return === 'function' ? iterator.return(value) : Promise.resolve({ done: true, value });
+		},
+		throw(error) {
+			return typeof iterator.throw === 'function' ? iterator.throw(error) : Promise.reject(error);
+		},
+		[Symbol.asyncIterator]() {
+			return this;
+		}
+	};
+}
+
 function snapshot(state) {
 	const remote = state?.remote;
 	const refreshed = remote?.explicit ? [...remote.explicit.keys()] : [];
@@ -94,7 +132,7 @@ function trace(get_remote, fn) {
 		const remote = get_remote();
 		const __ = remote?.__ ?? {};
 
-		const finish = (outcome, value, error) => {
+		const finish = (outcome, value, error, extra) => {
 			try {
 				emit({
 					type: 'server-call',
@@ -115,9 +153,46 @@ function trace(get_remote, fn) {
 					outcome,
 					durationMs: performance.now() - started,
 					at: Date.now(),
-					...snapshot(state)
+					...snapshot(state),
+					...extra
 				});
 			} catch {}
+		};
+
+		// The handler settled with \`value\`: report it, or wrap it to report what it produces later
+		const settle = (value) => {
+			if (__.type === 'query_batch' && typeof value === 'function') {
+				const input = Array.isArray(args[0]) ? args[0] : [];
+				const results = new Array(input.length);
+				const batchErrors = {};
+				const durationMs = performance.now() - started;
+				// Kit calls the resolver for every argument synchronously after the handler settles: report after that
+				setTimeout(() => finish('ok', results, undefined, { durationMs, batchErrors }), 0);
+				return function resolve(arg, index) {
+					try {
+						return (results[index] = value.apply(this, arguments));
+					} catch (error) {
+						batchErrors[index] = String(error?.message ?? error);
+						throw error;
+					}
+				};
+			}
+			const iterator = __.type === 'query_live' ? to_iterator(value) : null;
+			if (iterator) {
+				const stream = randomUUID();
+				let updates = 0;
+				let durationMs;
+				return tap_iterator(
+					iterator,
+					(item) => {
+						durationMs ??= performance.now() - started;
+						finish('ok', item, undefined, { stream, updates: ++updates, durationMs });
+					},
+					(error) => finish('error', undefined, error, { stream, updates })
+				);
+			}
+			finish('ok', value);
+			return value;
 		};
 
 		let result;
@@ -129,18 +204,14 @@ function trace(get_remote, fn) {
 		}
 		if (result && typeof result.then === 'function') {
 			return result.then(
-				(value) => {
-					finish('ok', value);
-					return value;
-				},
+				settle,
 				(error) => {
 					finish('error', undefined, error);
 					throw error;
 				}
 			);
 		}
-		finish('ok', result);
-		return result;
+		return settle(result);
 	};
 }
 

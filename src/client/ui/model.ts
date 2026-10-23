@@ -327,12 +327,19 @@ export function last_known(id: string, payload: string, arg: unknown): Known | n
 		}
 	}
 
+	// the client never sees the values a live query streams over HTTP, so those come from the server too
 	for (const call of store.server) {
-		if (call.origin !== 'ssr' || call.id !== id || call.outcome !== 'ok' || !call.result) continue;
-		// query.batch handlers return a resolver function: there is no per-argument value to show
-		if (call.kind === 'query_batch') continue;
-		if (stable(server_args(call)) !== want) continue;
-		candidates.push({ at: call.at, source: `SSR ${call.pathname ?? ''}`, value: server_result(call) });
+		if ((call.origin !== 'ssr' && !call.stream) || call.id !== id || call.outcome !== 'ok' || !call.result) continue;
+		const source = call.origin === 'ssr' ? `SSR ${call.pathname ?? ''}` : `streamed value ${call.updates}`;
+		if (call.kind === 'query_batch') {
+			const args = server_args(call);
+			const index = Array.isArray(args) ? args.findIndex((a) => stable(a) === want) : -1;
+			if (index === -1) continue;
+			const error = call.batchErrors?.[index];
+			candidates.push({ at: call.at, source, ...(error ? { error } : { value: (server_result(call) as unknown[])[index] }) });
+		} else if (stable(server_args(call)) === want) {
+			candidates.push({ at: call.at, source, value: server_result(call) });
+		}
 	}
 
 	return candidates.reduce<Known | null>((best, k) => (!best || k.at >= best.at ? k : best), null);

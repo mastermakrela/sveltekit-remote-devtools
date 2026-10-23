@@ -143,8 +143,11 @@
 						<span class="bad">{call.error}</span>
 					{:else if call.responseError}
 						<span class="bad">could not decode response: {call.responseError}</span>
+					{:else if call.stream && call.server?.stream}
+						<span class="dim">streamed ({call.stream}); {call.server.updates} values so far, the latest:</span>
+						<Value value={server_result(call.server)} open />
 					{:else if call.stream}
-						<span class="dim">streamed ({call.stream}); values are not captured</span>
+						<span class="dim">streamed ({call.stream}); no value yet</span>
 					{:else if call.response?.type === 'error'}
 						<Value value={call.response.error} open />
 					{:else if data?.redirect}

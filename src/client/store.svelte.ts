@@ -131,6 +131,12 @@ export interface ServerCall {
 	seq: number;
 	/** sequence assigned by the dev server (monotonic across pages) */
 	serverSeq: number;
+	/** `query.live`: one id per iterator; each yielded value replaces the previous event of the stream */
+	stream?: string;
+	/** `query.live`: how many values the stream has yielded so far */
+	updates?: number;
+	/** `query.batch`: errors thrown by the resolver, by argument index */
+	batchErrors?: Record<number, string>;
 }
 
 export interface LiveQuery {
@@ -238,7 +244,9 @@ class DevtoolsStore {
 
 	ingest_server(event: Omit<ServerCall, 'seq'>) {
 		if (this.server.some((s) => s.serverSeq === event.serverSeq)) return;
-		const call: ServerCall = { ...event, seq: ++this.#server_seq };
+		const previous = event.stream ? this.server.findIndex((s) => s.stream === event.stream) : -1;
+		const call: ServerCall = { ...event, seq: previous === -1 ? ++this.#server_seq : this.server[previous].seq };
+		if (previous !== -1) this.server.splice(previous, 1);
 		this.server.push(call);
 		this.server.sort((a, b) => a.serverSeq - b.serverSeq);
 		if (this.server.length > MAX_ENTRIES) this.server.shift();
