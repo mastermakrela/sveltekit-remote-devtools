@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>sveltekit-remote-devtools: every remote function call, decoded</title>
+		<meta
+			name="description"
+			content="A dev-only panel for SvelteKit remote functions: every query, command and form in your app, each call decoded, and the queries each write refreshed."
+		/>
+		<meta property="og:title" content="sveltekit-remote-devtools" />
+		<meta property="og:description" content="Every SvelteKit remote function call, decoded." />
+		<meta property="og:image" content="https://mastermakrela.github.io/sveltekit-remote-devtools/media/hero.jpg" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="color-scheme" content="dark" />
+		<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+		<link rel="preload" href="fonts/fira-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin />
+		<link rel="preload" href="fonts/fira-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<a class="skip" href="#main">Skip to content</a>
+
+		<header class="bar">
+			<a class="mark" href="./" aria-label="sveltekit-remote-devtools home">
+				<span class="dot" aria-hidden="true"></span>sveltekit-remote-devtools
+			</a>
+			<nav aria-label="Project links">
+				<a href="https://github.com/mastermakrela/sveltekit-remote-devtools">GitHub</a>
+				<a href="https://www.npmjs.com/package/sveltekit-remote-devtools">npm</a>
+			</nav>
+		</header>
+
+		<main id="main">
+			<section class="hero" aria-labelledby="title">
+				<div class="intro">
+					<h1 id="title">Every remote <span>function call,</span> decoded.</h1>
+					<p class="lede">
+						A dev-only panel for SvelteKit
+						<a href="https://svelte.dev/docs/kit/remote-functions">remote functions</a>. It lists every query,
+						command and form in your app, shows each call with its real argument and result, and tells you which
+						queries a write refreshed.
+					</p>
+					<div class="install">
+						<code id="install-cmd">bun add -D sveltekit-remote-devtools</code>
+						<button type="button" class="copy" data-copy="install-cmd">Copy</button>
+					</div>
+				</div>
+
+				<figure class="wire" aria-label="The same call, as the browser sends it and as the panel shows it">
+					<div class="wire-row">
+						<p class="wire-label">What the Network tab shows</p>
+						<pre class="raw"><span class="verb">POST</span> /_app/remote/nas25h/renameSheep
+{"payload":"W3siaWQiOjEsIm5hbWUiOjJ9LCJkb2xseSIsIkRvbGx5IHRoZSBTZWNvbmQiXQ","refreshes":["nas25h/getFlock"]}</pre>
+					</div>
+					<div class="wire-row">
+						<p class="wire-label">What the panel shows</p>
+						<pre class="decoded"><span class="kind write">command</span> <span data-decode><b>renameSheep</b>({ id: <i>"dolly"</i>, name: <i>"Dolly the Second"</i> })</span>
+  <span data-decode>↳ <b>getFlock</b>() <span class="tag read">.updates()</span> → Array(4)</span></pre>
+					</div>
+				</figure>
+			</section>
+
+			<figure class="stage">
+				<video
+					src="media/hero.mp4"
+					poster="media/hero.jpg"
+					width="1920"
+					height="1200"
+					muted
+					loop
+					playsinline
+					preload="auto"
+					aria-label="The panel open on a demo app: shearing a sheep runs the shearSheep command, which refreshes getWool; renaming one runs renameSheep, which refreshes getFlock."
+				></video>
+				<figcaption>The panel open on the counting-sheep example app.</figcaption>
+			</figure>
+
+			<section class="feature" id="timeline" aria-labelledby="timeline-h">
+				<div class="copy-col">
+					<h2 id="timeline-h">Timeline</h2>
+					<p>
+						Remote calls travel as <code>base64url(devalue)</code>, so the Network tab is no help. The timeline
+						decodes them: the argument, the result, the status and how long the server took.
+					</p>
+					<ul>
+						<li>Calls made while the page rendered on the server are grouped under that render.</li>
+						<li>For forms you see what the server received after validation, not just the raw body.</li>
+						<li>
+							Each command and form shows its refresh tree: the queries the client asked for with
+							<code>.updates()</code>, the ones the server refreshed itself, and requests nobody handled.
+						</li>
+					</ul>
+				</div>
+				<figure class="media">
+					<video
+						src="media/form.mp4"
+						poster="media/form.jpg"
+						width="1920"
+						height="1200"
+						muted
+						loop
+						playsinline
+						preload="none"
+						aria-label="Submitting the add-sheep form empty shows a validation error. After a valid submit, the timeline shows the arguments the server received and the getFlock refresh it triggered."
+					></video>
+				</figure>
+			</section>
+
+			<section class="feature" id="live" aria-labelledby="live-h">
+				<div class="copy-col">
+					<h2 id="live-h">Live</h2>
+					<p>
+						The queries SvelteKit is holding in its client cache for the current page, each with its arguments
+						and the last value the panel saw for it.
+					</p>
+					<ul>
+						<li>Batched queries are listed per argument.</li>
+						<li>Each entry says which call last set its value: the server render, or the command or form that refreshed it.</li>
+					</ul>
+				</div>
+				<figure class="media">
+					<video
+						src="media/live.mp4"
+						poster="media/live.jpg"
+						width="1920"
+						height="1200"
+						muted
+						loop
+						playsinline
+						preload="none"
+						aria-label="The Live tab lists getFlock, four getWool instances and countJumps. After shearing Dolly, her getWool entry shows 0, refreshed by shearSheep."
+					></video>
+				</figure>
+			</section>
+
+			<section class="feature" id="endpoints" aria-labelledby="endpoints-h">
+				<div class="copy-col">
+					<h2 id="endpoints-h">Endpoints</h2>
+					<p>
+						Every <code>query</code>, <code>query.batch</code>, <code>query.live</code>, <code>command</code>,
+						<code>form</code> and <code>prerender</code> in the project, found by walking <code>src</code> the
+						way SvelteKit does.
+					</p>
+					<ul>
+						<li>The URL and HTTP contract of each one, and its input and output types from TypeScript.</li>
+						<li>JSON Schema from Zod, Valibot or any Standard Schema validator.</li>
+						<li>A playground that calls the real endpoint and gives you the matching <code>curl</code>.</li>
+						<li>Warnings for remote files nothing imports, and for duplicate names or signatures.</li>
+					</ul>
+				</div>
+				<figure class="media">
+					<video
+						src="media/endpoints.mp4"
+						poster="media/endpoints.jpg"
+						width="1920"
+						height="1200"
+						muted
+						loop
+						playsinline
+						preload="none"
+						aria-label="The Endpoints tab lists the app's eight remote functions with their types. Expanding addSheep shows its contract and Valibot schema; the playground then sends shearSheep with the argument shaun."
+					></video>
+				</figure>
+			</section>
+
+			<section class="setup" aria-labelledby="setup-h">
+				<h2 id="setup-h">Set it up</h2>
+				<ol>
+					<li>
+						<p>Install it as a dev dependency.</p>
+						<div class="install">
+							<code id="install-cmd-2">bun add -D sveltekit-remote-devtools</code>
+							<button type="button" class="copy" data-copy="install-cmd-2">Copy</button>
+						</div>
+						<p class="note">pnpm, npm and yarn work too.</p>
+					</li>
+					<li>
+						<p>Add the plugin after <code>sveltekit()</code>.</p>
+						<pre class="code"><span class="c">// vite.config.ts</span>
+<span class="k">import</span> { sveltekit } <span class="k">from</span> <i>'@sveltejs/kit/vite'</i>;
+<span class="k">import</span> { defineConfig } <span class="k">from</span> <i>'vite'</i>;
+<span class="k">import</span> { remoteDevtools } <span class="k">from</span> <i>'sveltekit-remote-devtools'</i>;
+
+<span class="k">export default</span> <b>defineConfig</b>({
+	plugins: [<b>sveltekit</b>(), <b>remoteDevtools</b>()]
+});</pre>
+					</li>
+					<li>
+						<p>
+							Run <code>vite dev</code> and click the <span class="pill"><span class="dot"></span>remote</span> button
+							in the bottom-right corner, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
+						</p>
+					</li>
+				</ol>
+			</section>
+
+			<section class="facts" aria-labelledby="facts-h">
+				<h2 id="facts-h">Good to know</h2>
+				<dl>
+					<div>
+						<dt>Works with</dt>
+						<dd>SvelteKit 2.27 and later (including 3), Vite 6.3 and later, Svelte 5, any package manager.</dd>
+					</div>
+					<div>
+						<dt>Production</dt>
+						<dd>Adds nothing to your build. The plugin only runs during <code>vite dev</code>.</dd>
+					</div>
+					<div>
+						<dt>Types</dt>
+						<dd>Input and output types need TypeScript 5 or 6 in your app. Without it, everything else still works.</dd>
+					</div>
+					<div>
+						<dt>Vite DevTools</dt>
+						<dd>
+							If you use <a href="https://devtools.vite.dev">Vite DevTools</a>, the panel moves into its dock instead
+							of floating.
+						</dd>
+					</div>
+				</dl>
+				<p class="more">
+					How it works, the options and the caveats are in the
+					<a href="https://github.com/mastermakrela/sveltekit-remote-devtools#readme">README</a>. The app in the
+					videos is
+					<a href="https://github.com/mastermakrela/sveltekit-remote-devtools/tree/main/examples/counting-sheep"
+						><code>examples/counting-sheep</code></a
+					>.
+				</p>
+			</section>
+		</main>
+
+		<footer class="foot">
+			<p>
+				MIT licensed. Made by <a href="https://github.com/mastermakrela">mastermakrela</a>, not affiliated with the
+				Svelte team.
+			</p>
+		</footer>
+
+		<script src="main.js" defer></script>
+	</body>
+</html>

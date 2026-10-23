@@ -1,5 +1,7 @@
 # sveltekit-remote-devtools
 
+See it in action on the [landing page](https://mastermakrela.github.io/sveltekit-remote-devtools/).
+
 Dev-only devtool for SvelteKit [remote functions](https://svelte.dev/docs/kit/remote-functions). Drops a floating panel into your app during `vite dev` that shows:
 
 - **Endpoints**: every `query`, `query.batch`, `query.live`, `command`, `form` and `prerender` in the project, with its URL, HTTP contract, input/output TypeScript types, JSON Schema (Zod, Valibot, or any Standard JSON Schema vendor), duplicate-signature and same-name findings, plus a playground to call any of them.
