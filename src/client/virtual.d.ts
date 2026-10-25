@@ -6,6 +6,7 @@ declare module 'virtual:sveltekit-remote-devtools/config' {
 	export const kit_version: string;
 	export const manifest_path: string;
 	export const events_path: string;
+	export const page_path: string;
 	export const ws_server_event: string;
 	export const ws_manifest_event: string;
 	/** Vite DevTools is enabled: the panel mounts into its dock (`dock.ts`) instead of floating */

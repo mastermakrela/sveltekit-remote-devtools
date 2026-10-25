@@ -149,6 +149,10 @@
 						<li>The URL and HTTP contract of each one, and its input and output types from TypeScript.</li>
 						<li>JSON Schema from Zod, Valibot or any Standard Schema validator.</li>
 						<li>A playground that calls the real endpoint and gives you the matching <code>curl</code>.</li>
+						<li>
+							Forms get real inputs built from their schema, and the server's validation issues show up next to
+							the field they belong to.
+						</li>
 						<li>Warnings for remote files nothing imports, and for duplicate names or signatures.</li>
 					</ul>
 				</div>
@@ -163,7 +167,36 @@
 						playsinline
 						controls
 						preload="none"
-						aria-label="The Endpoints tab lists the app's eight remote functions with their types. Expanding addSheep shows its contract and Valibot schema; the playground then sends shearSheep with the argument shaun."
+						aria-label="The Endpoints tab lists the app's ten remote functions with their types. Submitting the addSheep form empty shows the server's issue, Every sheep needs a name, under the name field. With the name Bramble and the breed Jacob, the result comes back along with the getFlock refresh."
+					></video>
+				</figure>
+			</section>
+
+			<section class="feature" id="explorer" aria-labelledby="explorer-h">
+				<div class="copy-col">
+					<h2 id="explorer-h">Explorer</h2>
+					<p>
+						The endpoint list as a page of its own at <code>/__remote-devtools/</code> on your dev server: every
+						remote function laid out like an API reference, with a file tree beside it.
+					</p>
+					<ul>
+						<li>Find a function by the module that declares it, or by the pages and components that import it.</li>
+						<li>Pick a folder, a file or a single function to narrow the list.</li>
+						<li>The list follows your edits: save a remote file and it updates.</li>
+					</ul>
+				</div>
+				<figure class="media">
+					<video
+						src="media/explorer.mp4"
+						poster="media/explorer.jpg"
+						width="1920"
+						height="1200"
+						muted
+						loop
+						playsinline
+						controls
+						preload="none"
+						aria-label="The explorer page. Grouping the tree by importer and picking the /sheep/[id] page narrows the list to the three functions that page uses. Submitting logCheckup with a weight of 7 kg shows the server's issue under the weight field; with 64 kg, vaccinated and a note, the result comes back and getCheckups is refreshed."
 					></video>
 				</figure>
 			</section>
@@ -193,7 +226,8 @@
 					<li>
 						<p>
 							Run <code>vite dev</code> and click the <span class="pill"><span class="dot"></span>remote</span> button
-							in the bottom-right corner, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
+							in the bottom-right corner, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. The explorer is at
+							<code>/__remote-devtools/</code>.
 						</p>
 					</li>
 				</ol>
@@ -204,7 +238,7 @@
 				<dl>
 					<div>
 						<dt>Works with</dt>
-						<dd>SvelteKit 2.27 and later (including 3), Vite 6.3 and later, Svelte 5, any package manager.</dd>
+						<dd>SvelteKit 2.27 and later (including 3), Vite 6.3 and later, Svelte 5.25 and later, any package manager.</dd>
 					</div>
 					<div>
 						<dt>Production</dt>

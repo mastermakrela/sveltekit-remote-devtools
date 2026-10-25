@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 // Kit's own hash: kit_hash is a copy, and a different hash means every endpoint URL in the manifest is wrong
 import { hash } from '../node_modules/@sveltejs/kit/src/utils/hash.js';
-import { discover_remotes, kit_hash } from '../src/node/discover.ts';
+import { discover_remotes, importers, kit_hash } from '../src/node/discover.ts';
 import { canonical } from '../src/node/manifest.ts';
 
 test('kit_hash matches Kit', () => {
@@ -29,15 +29,48 @@ test('discover_remotes finds importers through relative paths, #imports and alia
 	const found = discover_remotes(root, 'src', ['.ts'], { '#lib/*': './src/lib/*' }, [
 		{ find: '$lib', replacement: path.join(root, 'src/lib') }
 	]);
-	const importers = Object.fromEntries(found.map((r) => [path.basename(r.file), r.importedBy]));
+	const by_file = Object.fromEntries(found.map((r) => [path.basename(r.file), importers(r)]));
 	fs.rmSync(root, { recursive: true });
 
-	expect(importers).toEqual({
+	expect(by_file).toEqual({
 		'a.remote.ts': [],
 		'b.remote.ts': ['src/routes/+page.svelte'],
 		'c.remote.ts': ['src/routes/+page.svelte'],
 		'orphan.remote.ts': [],
 		'local.remote.ts': ['src/routes/+page.svelte']
+	});
+});
+
+test('discover_remotes records which exports each importer binds', () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skrd-'));
+	const write = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+		fs.writeFileSync(path.join(root, file), text);
+	};
+	write('src/routes/data.remote.ts', '');
+	write('src/routes/a/+page.svelte', `<script>import { getA, getB as b, type Thing } from '../data.remote';</script>`);
+	write('src/routes/b/+page.svelte', `<script>import * as remote from '../data.remote';</script>`);
+	write('src/routes/c/+page.ts', `export const load = () => import('../data.remote');`);
+	write('src/routes/d/+page.ts', `import type { Only } from '../data.remote';`);
+	write('src/routes/e/+page.svelte', `<script>\nimport {\n\tgetC,\n\tgetD\n} from '../data.remote';\n</script>`);
+	write('src/routes/f/+page.svelte', `<script>\nimport {\n\tgetE, // in the header\n\t/* getOld, */ getF\n} from '../data.remote';\nimport { type Only } from '../data.remote';\n</script>`);
+	write('src/routes/g/index.ts', `export { getG as g } from '../data.remote';\nexport * from '../data.remote';`);
+	write('src/routes/h/+page.ts', `export function load() { return 1 }\nimport { getH } from '../data.remote';`);
+	write('src/routes/i/+page.ts', `// import { getOld } from '../data.remote';\nconst docs = \`import { getDocs } from '../data.remote'\`;\nimport { getI /* ; */ } from '../data.remote';`);
+
+	const [found] = discover_remotes(root, 'src', ['.ts'], {}, []);
+	fs.rmSync(root, { recursive: true });
+
+	expect(found.imports.find((i) => i.file === 'src/routes/g/index.ts' && i.names !== '*')?.names).toEqual(['getG']);
+	expect(Object.fromEntries(found.imports.map((i) => [i.file, i.names]))).toEqual({
+		'src/routes/a/+page.svelte': ['getA', 'getB'],
+		'src/routes/b/+page.svelte': '*',
+		'src/routes/c/+page.ts': '*',
+		'src/routes/e/+page.svelte': ['getC', 'getD'],
+		'src/routes/f/+page.svelte': ['getE', 'getF'],
+		'src/routes/g/index.ts': '*',
+		'src/routes/h/+page.ts': ['getH'],
+		'src/routes/i/+page.ts': ['getI']
 	});
 });
 

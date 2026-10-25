@@ -29,11 +29,31 @@ export interface DiscoveredRemote {
 	absolute: string;
 	file: string;
 	hash: string;
-	importedBy: string[];
+	/** Which exports each importer binds: `*` for namespace, dynamic and re-export-all imports */
+	imports: Array<{ file: string; names: string[] | '*' }>;
 }
 
 const source_extensions = ['.svelte', '.ts', '.js', '.mts', '.mjs'];
-const import_specifier = /(?:from\s+|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g;
+// `import <clause> from 'x'` and `export {…} | * from 'x'` (clause captured), `import('x')`, `import 'x'`.
+// The clause stops at `;`, quotes, parens and `=`, so it cannot run on into the code after an unrelated `import`.
+const import_specifier =
+	/(?:import\s+(type\s+)?([^;'"()=]*?)\s*from\s*|export\s+(type\s+)?(\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s*from\s*|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g;
+
+// Quoted strings are kept (specifiers live in them); comments and template literals, where commented-out or
+// example imports would hide, are dropped. shortcut: template literals with nested backticks confuse it.
+const comment_or_string = /(['"])(?:\\.|(?!\1)[^\\\n])*\1|`(?:\\.|[^\\`])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+const without_comments = (code: string) => code.replace(comment_or_string, (m) => (m[0] === '/' ? ' ' : m[0] === '`' ? '``' : m));
+
+/** Names bound by an import clause; `*` when every export is reachable */
+function bound_names(clause: string | undefined): string[] | '*' {
+	if (clause === undefined || !clause.includes('{')) return '*';
+	return clause
+		.slice(clause.indexOf('{') + 1, clause.indexOf('}'))
+		.split(',')
+		.map((part) => part.trim())
+		.filter((part) => part && !part.startsWith('type '))
+		.map((part) => part.split(/\s+as\s+/)[0]);
+}
 
 /**
  * @param root project root
@@ -56,7 +76,7 @@ export function discover_remotes(
 		.filter((file) => module_extensions.includes(path.extname(file)))
 		.map((absolute) => {
 			const file = posix(path.relative(root, absolute));
-			return { absolute, file, hash: kit_hash(file), importedBy: [] as string[] };
+			return { absolute, file, hash: kit_hash(file), imports: [] as DiscoveredRemote['imports'] };
 		});
 
 	// Static "who imports this remote module" scan, so we can flag remote files that no page reaches.
@@ -66,18 +86,27 @@ export function discover_remotes(
 
 	for (const source of sources) {
 		if (!source_extensions.some((ext) => source.endsWith(ext))) continue;
-		const code = fs.readFileSync(source, 'utf8');
+		const code = without_comments(fs.readFileSync(source, 'utf8'));
 
-		for (const [, specifier] of code.matchAll(import_specifier)) {
+		for (const [, import_type, import_clause, export_type, export_clause, specifier] of code.matchAll(import_specifier)) {
+			if (import_type || export_type) continue;
 			const resolved = resolve_specifier(root, source, specifier, subpath_imports, aliases);
 			const remote = resolved && by_stem.get(strip(resolved));
-			if (remote && remote.absolute !== source) {
-				remote.importedBy.push(posix(path.relative(root, source)));
+			const names = bound_names(import_clause ?? export_clause);
+			// `import { type X }` binds nothing at runtime
+			if (remote && remote.absolute !== source && names.length > 0) {
+				remote.imports.push({ file: posix(path.relative(root, source)), names });
 			}
 		}
 	}
 
 	return remotes;
+}
+
+/** Files that import the module, or with `name` only those that can reach that export */
+export function importers(remote: DiscoveredRemote, name?: string): string[] {
+	const reaching = remote.imports.filter((i) => name === undefined || i.names === '*' || i.names.includes(name));
+	return [...new Set(reaching.map((i) => i.file))];
 }
 
 function resolve_specifier(

@@ -69,6 +69,8 @@ export interface RemoteFunctionEntry {
 	 * no captured schema.
 	 */
 	source: 'runtime' | 'static';
+	/** Source files that statically import this export (or the whole module, via `* as` or `import()`) */
+	importedBy: string[];
 }
 
 export interface RemoteFileEntry {

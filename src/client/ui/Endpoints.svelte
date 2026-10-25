@@ -2,19 +2,29 @@
 
 <script lang="ts">
 	// Endpoints tab: every remote function in the app, grouped by module, with its HTTP contract,
-	// types and validation, plus a playground to invoke it.
+	// types and validation, plus a playground to invoke it. `full` is the standalone page: contracts start open,
+	// and `only` narrows the list to what its sidebar selected.
 	import type { RemoteFunctionEntry, RemoteKind } from '../../node/manifest.ts';
 	import { store } from '../store.svelte.ts';
 	import { format_type } from '../format.ts';
 	import Playground from './Playground.svelte';
 	import Kind from './Kind.svelte';
 	import { KIND_LABEL as kind_labels, is_write } from './model.ts';
+	import { page_path } from 'virtual:sveltekit-remote-devtools/config';
+
+	let { only = null, full = false }: { only?: string[] | null; full?: boolean } = $props();
 
 	const kinds: RemoteKind[] = ['query', 'query_batch', 'query_live', 'prerender', 'command', 'form'];
 
 	let filter = $state('');
 	let active_kinds = $state<RemoteKind[]>([]);
-	let selected = $state<string | null>(null);
+	// compared as text: a rebuilt manifest yields a new array for the same pick
+	const scope = $derived(String(only));
+	/** the open playground; another sidebar pick resets it to the list */
+	let selected = $derived.by<string | null>(() => {
+		void scope;
+		return null;
+	});
 	let reloading = $state(false);
 
 	const manifest = $derived(store.manifest);
@@ -30,9 +40,10 @@
 		if (!manifest) return [];
 		const needle = filter.trim().toLowerCase();
 		const matches = (f: RemoteFunctionEntry) =>
+			(!only || only.includes(f.id)) &&
 			(active_kinds.length === 0 || active_kinds.includes(f.kind)) &&
 			(!needle || `${f.name} ${f.file} ${kind_labels[f.kind]} ${f.id}`.toLowerCase().includes(needle));
-		const filtering = needle !== '' || active_kinds.length > 0;
+		const filtering = needle !== '' || active_kinds.length > 0 || only !== null;
 		return manifest.files
 			.map((file) => ({ ...file, functions: manifest.functions.filter((f) => f.file === file.file && matches(f)) }))
 			.filter((file) => file.functions.length > 0 || (!filtering && file.error));
@@ -75,9 +86,12 @@
 				<span><b>{manifest.functions.length}</b> functions</span>
 				<span><b>{manifest.files.length}</b> modules</span>
 				<span>Kit {manifest.kit.version}</span>
-				<button class="btn small" onclick={reload} disabled={reloading} title="Rebuild the manifest (also happens on file save)">
-					{reloading ? 'reloading…' : '↻ reload'}
-				</button>
+				<span class="tools">
+					{#if !full}<a class="link" href={page_path} target="_blank">open as page</a>{/if}
+					<button class="btn small" onclick={reload} disabled={reloading} title="Rebuild the manifest (also happens on file save)">
+						{reloading ? 'reloading…' : '↻ reload'}
+					</button>
+				</span>
 			</div>
 			<input class="search" type="search" bind:value={filter} placeholder="Filter by name, file, kind or id" aria-label="Filter endpoints" />
 			<div class="chips" role="group" aria-label="Filter by kind">
@@ -152,7 +166,7 @@
 								</span>
 								<button class="btn small try" onclick={() => (selected = fn.id)}>Try</button>
 							</div>
-							<details class="more">
+							<details class="more" open={full}>
 								<summary>
 									<span class="method">{fn.http.method}</span>
 									<span class="wrap">{fn.http.url}</span>
@@ -198,6 +212,8 @@
 											</details>
 										</dd>
 									{/if}
+									<dt>imported in</dt>
+									<dd class="wrap">{fn.importedBy.join(', ') || 'nowhere'}</dd>
 									<dt>id</dt>
 									<dd class="wrap muted">{fn.id}</dd>
 								</dl>
@@ -249,8 +265,11 @@
 		align-items: center;
 		gap: 4px 12px;
 	}
-	.summary .btn {
+	.tools {
 		margin-left: auto;
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
 	}
 	.search {
 		font: inherit;

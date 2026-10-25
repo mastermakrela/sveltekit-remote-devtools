@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { searchForWorkspaceRoot, type Alias, type Plugin, type RunnableDevEnvironment, type ViteDevServer } from 'vite';
-import { discover_remotes, posix, remote_module_pattern } from './discover.ts';
+import { discover_remotes, importers, posix, remote_module_pattern } from './discover.ts';
 import { canonical, type HttpContract, type RemoteKind, type RemoteManifest, type RemoteFunctionEntry } from './manifest.ts';
 import { to_validation, type CapturedValidator } from './schema.ts';
 import { EMIT_SYMBOL, SCHEMA_SYMBOL, shim_source } from './shim.ts';
@@ -17,6 +17,7 @@ import type { TypeExtractor } from './types.ts';
 
 export const MANIFEST_PATH = '/__remote-devtools/manifest.json';
 export const EVENTS_PATH = '/__remote-devtools/events.json';
+export const PAGE_PATH = '/__remote-devtools/';
 /** How many server-side call events to keep for late-joining pages (SSR calls happen before the browser connects) */
 const EVENT_BUFFER = 1000;
 export const WS_SERVER_EVENT = 'sveltekit-remote-devtools:server-call';
@@ -192,7 +193,8 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 					validation: await to_validation(validator),
 					types: fn_types,
 					signature: `${family} ${canonical(fn_types.input?.tree)} → ${canonical(fn_types.output?.tree)}`,
-					source
+					source,
+					importedBy: importers(remote, name)
 				});
 			}
 		}
@@ -207,7 +209,7 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 			kit: { version: kit_version, appDir: kit.appDir, base: kit.paths.base },
 			timings: { discoverMs, importMs, typescriptMs },
 			typesError: types_error,
-			files: discovered.map((r) => ({ file: r.file, hash: r.hash, importedBy: r.importedBy, error: errors.get(r.file) })),
+			files: discovered.map((r) => ({ file: r.file, hash: r.hash, importedBy: importers(r), error: errors.get(r.file) })),
 			functions,
 			duplicates: group((f) => f.signature).map(({ key, ids }) => ({ signature: key, ids })),
 			sameName: group((f) => f.name).map(({ key, ids }) => ({ name: key, ids }))
@@ -321,6 +323,8 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 						return path.join(client_dir, 'main.ts');
 					case 'dock':
 						return path.join(client_dir, 'dock.ts');
+					case 'page':
+						return path.join(client_dir, 'page.ts');
 				}
 			},
 			load(id) {
@@ -331,6 +335,7 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 					`export const kit_version = ${JSON.stringify(kit_version)};`,
 					`export const manifest_path = ${JSON.stringify(MANIFEST_PATH)};`,
 					`export const events_path = ${JSON.stringify(EVENTS_PATH)};`,
+					`export const page_path = ${JSON.stringify(PAGE_PATH)};`,
 					`export const ws_server_event = ${JSON.stringify(WS_SERVER_EVENT)};`,
 					`export const ws_manifest_event = ${JSON.stringify(WS_MANIFEST_EVENT)};`,
 					`export const docked = ${docked};`
@@ -382,6 +387,19 @@ export function remoteDevtools(options: RemoteDevtoolsOptions = {}): Array<Plugi
 				server.watcher.on('change', invalidate);
 				server.watcher.on('add', invalidate);
 				server.watcher.on('unlink', invalidate);
+
+				// The explorer as a page of its own. Served as-is, not through `transformIndexHtml`, so other
+				// plugins' HTML hooks (Vite DevTools' dock) stay out of it.
+				server.middlewares.use((req, res, next) => {
+					const pathname = req.url?.split('?')[0];
+					if (!ui || (pathname !== PAGE_PATH && pathname !== PAGE_PATH.slice(0, -1))) return next();
+					res.setHeader('content-type', 'text/html');
+					res.end(
+						`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
+							`<title>Remote functions</title><script type="module" src="${vite_base}@vite/client"></script>` +
+							`<script type="module" src="${vite_base}@id/${VIRTUAL_PREFIX}page"></script></head><body></body></html>`
+					);
+				});
 
 				server.middlewares.use(MANIFEST_PATH, (_req, res) => {
 					cached ??= build_manifest();

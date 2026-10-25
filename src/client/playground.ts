@@ -4,9 +4,9 @@
 import * as devalue from 'devalue';
 import { app } from 'virtual:sveltekit-remote-devtools/kit-client';
 import { stringify_command_arg, stringify_remote_arg } from 'virtual:sveltekit-remote-devtools/kit-shared';
-import { base, app_dir } from 'virtual:sveltekit-remote-devtools/config';
+import { base, app_dir, kit_version } from 'virtual:sveltekit-remote-devtools/config';
 import type { RemoteFunctionEntry, TypeNode } from '../node/manifest.ts';
-import { app_decoders, decode_response_data, type RemoteFunctionData } from './store.svelte.ts';
+import { app_decoders, decode_response_data, decode_server_value, type RemoteFunctionData } from './store.svelte.ts';
 
 // ---------------------------------------------------------------------------------------------------
 // Samples
@@ -25,8 +25,11 @@ interface JsonSchema {
 	prefixItems?: JsonSchema[];
 	minItems?: number;
 	minimum?: number;
+	maximum?: number;
 	exclusiveMinimum?: number;
 	minLength?: number;
+	maxLength?: number;
+	pattern?: string;
 	format?: string;
 	nullable?: boolean;
 }
@@ -160,6 +163,112 @@ export function initial_source(fn: RemoteFunctionEntry): string {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// Forms
+
+export interface FormField {
+	/** property name, as Kit reports it in `issue.name` */
+	name: string;
+	/** the input's `name` attribute in Kit's format (`parse_form_key`): `<n:|b:>name`, plus `/<form id>` since Kit 3 */
+	key: string;
+	type: 'text' | 'email' | 'number' | 'checkbox' | 'select' | 'file';
+	options: string[];
+	initial: string | boolean;
+	/** native constraints from the JSON Schema; only enforced when browser checks are on */
+	constraints: Record<string, string | number | boolean | undefined>;
+	/** set when the value can't be built with one input (arrays, nested objects) */
+	note?: string;
+}
+
+function kit_at_least(major: number, minor: number) {
+	const [M, m] = kit_version.split('.').map(Number);
+	return M > major || (M === major && m >= minor);
+}
+
+/** `anyOf: [X, null]` → X, `anyOf` of `const`s → `enum` */
+function plain(prop: JsonSchema): JsonSchema {
+	const alternatives = (prop.anyOf ?? prop.oneOf)?.filter((a) => a.type !== 'null' && a.type !== 'undefined');
+	if (!alternatives) return prop;
+	if (alternatives.every((a) => 'const' in a)) return { ...prop, enum: alternatives.map((a) => a.const) };
+	return alternatives.length === 1 ? { default: prop.default, ...alternatives[0] } : prop;
+}
+
+/** The input type in JSON Schema terms, for forms without a schema the manifest could convert */
+function schema_of(node: TypeNode): JsonSchema {
+	switch (node.kind) {
+		case 'primitive':
+			return { type: node.name };
+		case 'literal':
+			return { const: node.value };
+		case 'union':
+			return { anyOf: node.types.map(schema_of) };
+		case 'object':
+			return {
+				type: 'object',
+				properties: Object.fromEntries(node.properties.map((p) => [p.name, schema_of(p.type)])),
+				required: node.properties.filter((p) => !p.optional).map((p) => p.name)
+			};
+		case 'array':
+		case 'tuple':
+			return { type: 'array' };
+		case 'builtin':
+			return node.name === 'File' ? { type: 'string', format: 'binary' } : {};
+		default:
+			return {};
+	}
+}
+
+const UNSUPPORTED = 'Arrays and nested objects need one input per element; this sends the text as a single value.';
+
+/** One input per top-level property of the form's schema (or, without one, of its input type) */
+export function form_fields(fn: RemoteFunctionEntry): FormField[] {
+	// Kit coerces `n:`/`b:` names since 2.48 and scopes names to the form since 3.0
+	const prefixes = kit_at_least(2, 48);
+	const suffix = kit_at_least(3, 0) ? `/${fn.id}` : '';
+	const field = (name: string, type: FormField['type'], rest: Partial<FormField> = {}, numeric = type === 'number'): FormField => {
+		const prefix = !prefixes ? '' : numeric ? 'n:' : type === 'checkbox' ? 'b:' : '';
+		return { name, key: `${prefix}${name}${suffix}`, type, options: [], initial: type === 'checkbox' ? false : '', constraints: {}, ...rest };
+	};
+
+	const declared = fn.validation.mode === 'standard-schema' ? (fn.validation.jsonSchema as JsonSchema | null) : null;
+	const tree = fn.types.input?.tree;
+	const schema = declared?.properties ? declared : tree?.kind === 'object' ? schema_of(tree) : null;
+	return Object.entries(schema?.properties ?? {}).map(([name, raw]) => {
+		const prop = plain(raw);
+		const types = Array.isArray(prop.type) ? prop.type : [prop.type];
+		const required = schema?.required?.includes(name);
+		const initial = String(prop.default ?? '');
+		if (prop.enum) {
+			const numeric = prop.enum.every((v) => typeof v === 'number');
+			return field(name, 'select', { options: prop.enum.map(String), initial, constraints: { required } }, numeric);
+		}
+		if (types.includes('boolean')) return field(name, 'checkbox', { initial: prop.default === true });
+		if (types.includes('number') || types.includes('integer')) {
+			const step = types.includes('integer') ? 1 : 'any';
+			return field(name, 'number', { initial, constraints: { required, min: prop.minimum, max: prop.maximum, step } });
+		}
+		if (prop.format === 'binary') return field(name, 'file', { constraints: { required } });
+		if (types.includes('array') || types.includes('object')) return field(name, 'text', { note: UNSUPPORTED });
+		// no `pattern`: JSON Schema patterns match anywhere, HTML ones must match the whole value
+		return field(name, prop.format === 'email' ? 'email' : 'text', {
+			initial,
+			constraints: { required, minlength: prop.minLength, maxlength: prop.maxLength }
+		});
+	});
+}
+
+export interface FormIssue {
+	/** dotted field path, `''` for issues about the whole form */
+	name: string;
+	message: string;
+}
+
+/** Validation issues of a form submission (`{ _: { issues } }`), empty when it went through */
+export function form_issues(result: PlaygroundResult | null): FormIssue[] {
+	const output = result?.data?._ as { issues?: FormIssue[] } | undefined;
+	return Array.isArray(output?.issues) ? output.issues : [];
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Argument parsing and encoding
 
 export type ArgMode = 'json' | 'js';
@@ -187,7 +296,8 @@ export interface PlaygroundRequest {
 	method: 'GET' | 'POST';
 	url: string;
 	headers: Record<string, string>;
-	body: string | null;
+	/** FormData for forms: `fetch` then sends it multipart, which Kit's form endpoint accepts like a native submit */
+	body: string | FormData | null;
 	/** the encoded payload(s), for display */
 	payloads: string[];
 }
@@ -221,7 +331,8 @@ export async function build_request(fn: RemoteFunctionEntry, arg: unknown): Prom
 			return { method: 'POST', url: endpoint, headers, body: JSON.stringify({ payload, refreshes: [] }), payloads: [payload] };
 		}
 		case 'form':
-			throw new Error('forms are exercised from the page');
+			if (!(arg instanceof FormData)) throw new Error('forms are submitted as FormData');
+			return { method: 'POST', url: endpoint, headers, body: arg, payloads: [] };
 	}
 }
 
@@ -235,7 +346,12 @@ export function curl_line(request: PlaygroundRequest): string {
 		if (key.startsWith('x-sveltekit-')) continue;
 		parts.push('-H', shell_quote(`${key}: ${value}`));
 	}
-	if (request.body !== null) parts.push('--data', shell_quote(request.body));
+	if (request.body instanceof FormData) {
+		for (const [key, value] of request.body) {
+			if (typeof value === 'string') parts.push('-F', shell_quote(`${key}=${value}`));
+			else if (value.name) parts.push('-F', shell_quote(`${key}=@${value.name}`));
+		}
+	} else if (request.body !== null) parts.push('--data', shell_quote(request.body));
 	parts.push(shell_quote(new URL(request.url, location.origin).href));
 	return parts.join(' ');
 }
@@ -261,6 +377,8 @@ export interface PlaygroundResult {
 interface Envelope {
 	type: 'result' | 'error' | 'redirect';
 	data?: string;
+	/** older Kit 2 versions sent the bare output here instead of `data` */
+	result?: string;
 	error?: unknown;
 	location?: string;
 }
@@ -281,8 +399,9 @@ export async function send(fn: RemoteFunctionEntry, request: PlaygroundRequest, 
 	} catch {
 		return { status: response.status, durationMs, type: 'raw', raw };
 	}
-	if (envelope.type === 'result' && envelope.data !== undefined) {
-		const data = decode_response_data(envelope.data);
+	const encoded = envelope.data ?? envelope.result;
+	if (envelope.type === 'result' && encoded !== undefined) {
+		const data = envelope.data !== undefined ? decode_response_data(encoded) : { _: decode_server_value(encoded) };
 		const result: PlaygroundResult = { status: response.status, durationMs, type: 'result', data, raw };
 		if (fn.kind === 'query_batch' && Array.isArray(data._)) {
 			result.batch = (data._ as Array<{ type: string; data?: unknown; error?: unknown }>).map((item) =>

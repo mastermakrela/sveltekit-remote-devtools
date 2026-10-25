@@ -4,7 +4,7 @@ See it in action on the [landing page](https://mastermakrela.github.io/sveltekit
 
 Dev-only devtool for SvelteKit [remote functions](https://svelte.dev/docs/kit/remote-functions). Drops a floating panel into your app during `vite dev` that shows:
 
-- **Endpoints**: every `query`, `query.batch`, `query.live`, `command`, `form` and `prerender` in the project, with its URL, HTTP contract, input/output TypeScript types, JSON Schema (Zod, Valibot, or any Standard JSON Schema vendor), duplicate-signature and same-name findings, plus a playground to call any of them.
+- **Endpoints**: every `query`, `query.batch`, `query.live`, `command`, `form` and `prerender` in the project, with its URL, HTTP contract, input/output TypeScript types, JSON Schema (Zod, Valibot, or any Standard JSON Schema vendor), duplicate-signature and same-name findings, plus a playground to call any of them. Forms get a real form built from their schema, posted like a native submit, so you see the server's validation issues per field. The same list opens as a full page at `/__remote-devtools/`, with a file tree to find functions by the module that declares them or the files that import them.
 - **Timeline**: every remote call, decoded. Payloads are `base64url(devalue)` on the wire and unreadable in the Network tab; here you see the argument, the result, the SSR calls that ran while the page rendered, and for commands and forms the single-flight refresh tree: which queries the client asked to refresh (`.updates(...)`), which the server refreshed itself (`refresh()` / `refreshAll()`), which were ignored, and the new values.
 - **Live**: the queries Kit currently holds in its client cache for this page, with their arguments and last known values.
 
@@ -34,6 +34,7 @@ With [Vite DevTools](https://devtools.vite.dev) enabled (`bun add -d @vitejs/dev
 
 Endpoints served by the dev server:
 
+- `/__remote-devtools/`: the Endpoints tab as a full page with a file tree (not with `ui: false`)
 - `/__remote-devtools/manifest.json`: the endpoint inventory (regenerated when a file in `src` changes)
 - `/__remote-devtools/events.json?since=<seq>`: the last 1000 server-side call events
 

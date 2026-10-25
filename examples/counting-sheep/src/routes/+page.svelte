@@ -33,7 +33,7 @@
 		<ul>
 			{#each await getFlock() as sheep (sheep.id)}
 				<li>
-					<span class="icon" aria-hidden="true">🐑</span>
+					<a class="icon" href="/sheep/{sheep.id}" aria-label="Checkups of {sheep.name}">🐑</a>
 					<input
 						class="name"
 						aria-label="Name of {sheep.name}"
@@ -128,6 +128,7 @@
 	}
 	.icon {
 		font-size: 1.4rem;
+		text-decoration: none;
 	}
 	.name {
 		font: inherit;

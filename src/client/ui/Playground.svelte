@@ -7,6 +7,8 @@
 	import {
 		build_request,
 		curl_line,
+		form_fields,
+		form_issues,
 		initial_source,
 		parse_source,
 		pretty,
@@ -39,7 +41,14 @@
 	let controller: AbortController | null = null;
 
 	const is_write = $derived(fn.kind === 'command');
-	const invocable = $derived(fn.kind !== 'form');
+	const fields = $derived(fn.kind === 'form' ? form_fields(fn) : []);
+	const issues = $derived(form_issues(result));
+	// `address.street` and `tags[0]` belong to the `address` and `tags` inputs
+	const field_of = (issue: { name: string }) => issue.name.split(/[.[]/)[0];
+	const issues_of = (name: string) => issues.filter((i) => field_of(i) === name);
+	const form_level_issues = $derived(issues.filter((i) => !fields.some((f) => f.name === field_of(i))));
+	// off by default: a Kit form validates on the server, which is what this should show
+	let browser_checks = $state(false);
 	// Kit also echoes a query's own result into `q` (cache seeding); only show the other entries
 	const self_key = $derived(request ? `${fn.id}/${request.payloads[0] ?? ''}` : null);
 	const refreshed = $derived(Object.entries(result?.data?.q ?? {}).filter(([key]) => key !== self_key));
@@ -75,6 +84,10 @@
 		if (!prepared) return;
 		request = prepared;
 		if (fn.kind === 'query_live') return connect(prepared);
+		await execute(prepared);
+	}
+
+	async function execute(prepared: PlaygroundRequest) {
 		busy = true;
 		try {
 			result = await send(fn, prepared);
@@ -106,6 +119,13 @@
 		}
 	}
 
+	async function submit_form(event: SubmitEvent) {
+		event.preventDefault();
+		reset_output();
+		request = await build_request(fn, new FormData(event.currentTarget as HTMLFormElement));
+		await execute(request);
+	}
+
 	function stop() {
 		controller?.abort();
 	}
@@ -134,12 +154,45 @@
 	<p class="contract"><b>{fn.http.method}</b> <span class="wrap">{fn.http.url}</span></p>
 	<p class="muted small">{fn.http.request}</p>
 
-	{#if !invocable}
-		<p class="note">
-			Forms are best exercised from the page: the client sends a form-encoded body (or Kit's binary form encoding
-			when enhanced) and validation issues come back per field. Submit the form in the app and inspect the call in
-			the Timeline tab.
-		</p>
+	{#if fn.kind === 'form'}
+		<form class="fields" novalidate={!browser_checks} onsubmit={submit_form}>
+			{#each fields as field (field.key)}
+				{@const field_issues = issues_of(field.name)}
+				{@const invalid = field_issues.length > 0}
+				<label class:check={field.type === 'checkbox'}>
+					<span class="field-name">{field.name}</span>
+					{#if field.type === 'select'}
+						<select name={field.key} {...field.constraints} aria-invalid={invalid}>
+							{#if !field.constraints.required}<option value="">(not set)</option>{/if}
+							{#each field.options as option, i (i)}
+								<option selected={option === field.initial}>{option}</option>
+							{/each}
+						</select>
+					{:else if field.type === 'checkbox'}
+						<input type="checkbox" name={field.key} checked={field.initial === true} aria-invalid={invalid} />
+					{:else}
+						<input type={field.type} name={field.key} value={field.initial} {...field.constraints} aria-invalid={invalid} />
+					{/if}
+					{#if field.note}<span class="hint">{field.note}</span>{/if}
+					<!-- index keys: two checks can report the same message -->
+					{#each field_issues as issue, i (i)}
+						<span class="issue">{issue.message}</span>
+					{/each}
+				</label>
+			{:else}
+				<p class="muted small">No fields found in the schema. The form submits empty.</p>
+			{/each}
+			{#each form_level_issues as issue, i (i)}
+				<p class="issue">{issue.name ? `${issue.name}: ` : ''}{issue.message}</p>
+			{/each}
+			<div class="actions">
+				<button class="btn primary" disabled={busy}>{busy ? 'Submitting…' : 'Submit'}</button>
+				<label class="muted small" title="Adds required, min, max, length and pattern from the JSON Schema, which a Kit form does not do by itself">
+					<input type="checkbox" bind:checked={browser_checks} /> check in the browser first
+				</label>
+			</div>
+		</form>
+		<p class="muted small">Posted as multipart form data, like a native submit, so the server's real validation answers.</p>
 	{:else}
 		{#if fn.kind === 'prerender' && !fn.dynamic}
 			<p class="note">
@@ -204,7 +257,9 @@
 			{#if request.payloads.some(Boolean)}
 				<p class="muted small wrap">payload{request.payloads.length > 1 ? 's' : ''}: {request.payloads.join(', ')}</p>
 			{/if}
-			{#if request.body}<pre>{request.body}</pre>{/if}
+			{#if request.body instanceof FormData}
+				<pre>{[...request.body].map(([key, value]) => `${key} = ${typeof value === 'string' ? value : `[File ${value.name}]`}`).join('\n')}</pre>
+			{:else if request.body}<pre>{request.body}</pre>{/if}
 			<div class="curl">
 				<code class="wrap">{curl_line(request)}</code>
 				<button class="btn small" onclick={() => request && copy(curl_line(request))}>{copied ? 'copied' : 'copy curl'}</button>
@@ -340,6 +395,55 @@
 	textarea:focus {
 		outline: none;
 		border-color: var(--skrd-accent);
+	}
+	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.fields > label {
+		display: grid;
+		grid-template-columns: 14ch minmax(0, 320px);
+		align-items: baseline;
+		gap: 2px 10px;
+	}
+	.fields > label.check {
+		align-items: center;
+	}
+	.fields > label.check input {
+		justify-self: start;
+	}
+	.field-name {
+		color: var(--skrd-muted);
+	}
+	.fields input:not([type='checkbox']),
+	.fields select {
+		font: inherit;
+		padding: 3px 6px;
+		border: 1px solid var(--skrd-line);
+		border-radius: 4px;
+		background: var(--skrd-code-bg);
+		color: var(--skrd-fg);
+	}
+	.fields input:focus,
+	.fields select:focus {
+		outline: none;
+		border-color: var(--skrd-accent);
+	}
+	.fields [aria-invalid='true'] {
+		border-color: var(--skrd-bad);
+	}
+	.issue,
+	.hint {
+		grid-column: 2;
+		color: var(--skrd-bad);
+		font-size: 11px;
+	}
+	.hint {
+		color: var(--skrd-dim);
+	}
+	p.issue {
+		margin: 0;
 	}
 	.actions {
 		display: flex;
