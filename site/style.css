@@ -376,6 +376,22 @@ h2 {
 	margin: 1.5rem 0 0;
 }
 
+.agent-steps p {
+	margin: 0 0 0.75rem;
+}
+.agent-steps .install + p {
+	margin-top: 1.75rem;
+}
+.agent-steps .install {
+	display: flex;
+}
+.agent-steps .install code {
+	flex: 1;
+}
+.install.prompt code {
+	white-space: normal;
+}
+
 /* setup */
 .setup,
 .facts {

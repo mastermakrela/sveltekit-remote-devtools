@@ -1,0 +1,14 @@
+# sveltekit-remote-devtools
+
+> Dev-only Vite plugin for SvelteKit remote functions (query, query.batch, query.live, command, form, prerender). During `vite dev` it adds a panel to the app and serves two JSON endpoints that scripts and agents can read: `/__remote-devtools/manifest.json`, the inventory of every remote function with its URL, input/output TypeScript types, JSON Schema, importers and duplicate findings; and `/__remote-devtools/events.json?since=<seq>`, the last 1000 decoded server-side calls.
+
+Install: `bun add -D sveltekit-remote-devtools`, then add `remoteDevtools()` after `sveltekit()` in `vite.config.ts`. `remoteDevtools({ ui: false })` keeps only the JSON endpoints.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/mastermakrela/sveltekit-remote-devtools/main/README.md): setup, endpoints, how it works, caveats
+- [Manifest types](https://raw.githubusercontent.com/mastermakrela/sveltekit-remote-devtools/main/src/node/manifest.ts): the shape of manifest.json, exported from the package as `RemoteManifest`
+
+## Agent skills
+
+- [remote-functions-audit](https://raw.githubusercontent.com/mastermakrela/sveltekit-remote-devtools/main/skills/remote-functions-audit/SKILL.md): finds duplicated or nearly duplicated functions, functions nothing imports, inputs without validation, N+1 query calls that should be `query.batch`, and `.updates()` the server never handles, then proposes fixes. Install with `bunx skills add mastermakrela/sveltekit-remote-devtools`

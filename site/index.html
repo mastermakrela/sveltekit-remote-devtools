@@ -233,6 +233,35 @@
 				</ol>
 			</section>
 
+			<section class="feature" id="agents" aria-labelledby="agents-h">
+				<div class="copy-col">
+					<h2 id="agents-h">Audit with an agent</h2>
+					<p>
+						The dev server also serves the endpoint list and the recorded calls as JSON. A skill for coding agents
+						reads both and proposes fixes for:
+					</p>
+					<ul>
+						<li>Functions that duplicate each other, or nearly do.</li>
+						<li>Functions and remote files nothing imports.</li>
+						<li>Inputs taken with <code>'unchecked'</code> instead of a schema.</li>
+						<li>A <code>query</code> called once per row that should be a <code>query.batch</code>.</li>
+						<li>Refreshes the client asks for with <code>.updates()</code> that the server never handles.</li>
+					</ul>
+				</div>
+				<div class="media agent-steps">
+					<p>Install the skill for your agent:</p>
+					<div class="install">
+						<code id="skill-cmd">bunx skills add mastermakrela/sveltekit-remote-devtools</code>
+						<button type="button" class="copy" data-copy="skill-cmd">Copy</button>
+					</div>
+					<p>Or paste this prompt. The skill ships inside the package, so nothing else to install:</p>
+					<div class="install prompt">
+						<code id="agent-prompt">Read node_modules/sveltekit-remote-devtools/skills/remote-functions-audit/SKILL.md and follow it to audit this app's remote functions.</code>
+						<button type="button" class="copy" data-copy="agent-prompt">Copy</button>
+					</div>
+				</div>
+			</section>
+
 			<section class="facts" aria-labelledby="facts-h">
 				<h2 id="facts-h">Good to know</h2>
 				<dl>

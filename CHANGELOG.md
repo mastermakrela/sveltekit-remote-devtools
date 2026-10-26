@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+- New agent skill `remote-functions-audit` reads the dev server's JSON and finds duplicated functions, functions nothing imports, unvalidated inputs, N+1 queries and unhandled `.updates()`, then proposes fixes. Install it with `bunx skills add mastermakrela/sveltekit-remote-devtools`.
+
 ## 0.2.0
 
 - The endpoint list now also opens as a full page at `/__remote-devtools/` on the dev server, with a file tree that finds each remote function by the module that declares it or the files that import it.

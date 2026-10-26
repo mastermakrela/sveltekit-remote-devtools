@@ -38,6 +38,29 @@ Endpoints served by the dev server:
 - `/__remote-devtools/manifest.json`: the endpoint inventory (regenerated when a file in `src` changes)
 - `/__remote-devtools/events.json?since=<seq>`: the last 1000 server-side call events
 
+The two JSON endpoints are meant for scripts and coding agents too. The manifest's shape is the `RemoteManifest` type, exported from the package and documented in [`src/node/manifest.ts`](src/node/manifest.ts). Fields worth querying:
+
+- `duplicates` and `sameName`: functions that share one input/output signature, or one export name
+- `functions[].importedBy`: an empty list means nothing imports the function
+- `functions[].validation.mode`: `"unchecked"` means the input is never validated
+- `functions[].types.input` / `.output`: the TypeScript types, as text and as a JSON tree
+
+```sh
+curl -s 'http://[::1]:5173/__remote-devtools/manifest.json' | jq '.duplicates'
+```
+
+Use the address your dev server's banner prints.
+
+### Agent skills
+
+[`skills/`](skills) has a skill for coding agents that works from these endpoints:
+
+- [`remote-functions-audit`](skills/remote-functions-audit/SKILL.md): finds duplicated or nearly duplicated functions, functions nothing imports, inputs without validation, N+1 query calls that should be `query.batch`, and `.updates()` the server never handles, then proposes fixes
+
+```sh
+bunx skills add mastermakrela/sveltekit-remote-devtools   # or: pnpm dlx / npx
+```
+
 ## How it works
 
 Everything is a Vite plugin; SvelteKit itself is not patched.
